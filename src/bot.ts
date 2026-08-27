@@ -595,6 +595,7 @@ async function showGroups(ctx: Context) {
 }
 
 // ===== START BOT =====
+// At the end of the file, update startBot function
 export function startBot() {
   bot.launch();
   console.log('✅ Bot started successfully!');
