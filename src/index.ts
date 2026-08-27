@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { startBot } from './bot';
+import './health'; // Add this line
 
 console.log('🚀 Starting bot...');
 startBot();

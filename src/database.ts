@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 import { User, UserStatus, Admin, Group } from './types';
 import dotenv from 'dotenv';
+import WebSocket from 'ws';
 
+// Polyfill WebSocket for Node.js
+if (!global.WebSocket) {
+  // @ts-ignore
+  global.WebSocket = WebSocket;
+}
 dotenv.config();
 
 export const supabase = createClient(
