@@ -1,7 +1,7 @@
 import express from 'express';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT: number = Number(process.env.PORT) || 3000;
 
 // Health check endpoint for Render and UptimeRobot
 app.get('/health', (req, res) => {
