@@ -1,18 +1,19 @@
 import { Markup } from 'telegraf';
 
 export const mainMenu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('🔊 Send Announcement', 'main_feature')],
   [Markup.button.callback('👤 My Account', 'my_account')],
   [Markup.button.callback('ℹ️ Help', 'help')],
 ]);
 
 export const pendingMenu = () => Markup.inlineKeyboard([
   [Markup.button.callback('🔄 Refresh', 'refresh_status')],
-  [Markup.button.url('📞 Contact Admin', process.env.SUPPORT_CONTACT || 'https://t.me/your_support')],
+  [Markup.button.url('📞 Contact Admin', process.env.SUPPORT_CONTACT || 'https://t.me/Dannywest223')],
 ]);
 
 export const adminPanel = () => Markup.inlineKeyboard([
   [Markup.button.callback('📢 Send Announcement', 'admin_announcement')],
+  [Markup.button.callback('🔁 Auto-Repeat', 'admin_autorepeat')],
+  [Markup.button.callback('⏹️ Stop Repeating', 'admin_stoprepeat')],
   [Markup.button.callback('👥 Groups', 'admin_groups')],
   [Markup.button.callback('👤 Users', 'admin_users')],
   [Markup.button.callback('⏳ Pending', 'admin_pending')],
@@ -44,9 +45,17 @@ export const backButton = () => Markup.inlineKeyboard([
   [Markup.button.callback('◀️ Back', 'admin_back')]
 ]);
 
+// Updated: Added "Send Every 10 Min" option
 export const confirmBroadcast = () => Markup.inlineKeyboard([
-  [Markup.button.callback('✅ Send to All Groups', 'confirm_broadcast')],
+  [Markup.button.callback('✅ Send Once', 'confirm_broadcast')],
+  [Markup.button.callback('🔁 Send Every 10 Min', 'confirm_repeat')],
   [Markup.button.callback('❌ Cancel', 'cancel_broadcast')]
+]);
+
+// New: Stop repeat keyboard
+export const stopRepeatKeyboard = () => Markup.inlineKeyboard([
+  [Markup.button.callback('⏹️ Stop Repeating', 'stop_repeat')],
+  [Markup.button.callback('❌ Cancel', 'cancel')]
 ]);
 
 export const groupListKeyboard = (groups: any[]) => {

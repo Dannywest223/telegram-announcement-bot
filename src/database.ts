@@ -3,12 +3,13 @@ import { User, UserStatus, Admin, Group } from './types';
 import dotenv from 'dotenv';
 import WebSocket from 'ws';
 
-// Polyfill WebSocket for Node.js
+dotenv.config();
+
+// WebSocket polyfill for Node.js
 if (!global.WebSocket) {
   // @ts-ignore
   global.WebSocket = WebSocket;
 }
-dotenv.config();
 
 export const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -278,4 +279,58 @@ export async function initializeOwner() {
       .insert([{ user_id: user.id, telegram_id: ownerId, role: 'owner' }]);
     console.log(`✅ Owner ${ownerId} initialized as admin`);
   }
+}
+
+// ===== REPEATING MESSAGES =====
+
+export async function createRepeatingMessage(
+  message: string,
+  photoUrl: string | null,
+  createdBy: string,
+  intervalMinutes: number = 10
+) {
+  // Deactivate all existing repeating messages
+  await supabase
+    .from('repeating_messages')
+    .update({ is_active: false })
+    .eq('is_active', true);
+
+  // Create new repeating message
+  const { data, error } = await supabase
+    .from('repeating_messages')
+    .insert([{
+      message,
+      photo_url: photoUrl,
+      interval_minutes: intervalMinutes,
+      is_active: true,
+      created_by: createdBy
+    }])
+    .select()
+    .single();
+  
+  if (error) throw error;
+  return data;
+}
+
+export async function getActiveRepeatingMessage() {
+  const { data, error } = await supabase
+    .from('repeating_messages')
+    .select('*')
+    .eq('is_active', true)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+  
+  if (error?.code === 'PGRST116') return null;
+  if (error) throw error;
+  return data;
+}
+
+export async function stopRepeatingMessage() {
+  const { error } = await supabase
+    .from('repeating_messages')
+    .update({ is_active: false })
+    .eq('is_active', true);
+  
+  if (error) throw error;
 }

@@ -2,22 +2,20 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { startBot } from './bot';
-
-// Start health check server
 import './health';
 
 console.log('🚀 Starting bot...');
 
-// Start the bot
-startBot();
+const bot = startBot();
 
-// Handle graceful shutdown
 process.once('SIGINT', () => {
     console.log('🛑 Shutting down...');
+    bot.stop('SIGINT');
     process.exit(0);
 });
 
 process.once('SIGTERM', () => {
     console.log('🛑 Shutting down...');
+    bot.stop('SIGTERM');
     process.exit(0);
 });

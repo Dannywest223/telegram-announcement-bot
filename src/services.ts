@@ -81,18 +81,20 @@ export async function sendAnnouncementToGroups(bot: any, message: string, photoU
   const groups = await db.getGroups();
   let sent = 0, failed = 0;
 
+  console.log(`📢 Sending announcement to ${groups.length} groups...`);
+
   for (const group of groups) {
     try {
       if (photoUrl) {
         await bot.telegram.sendPhoto(
           group.chat_id,
           photoUrl,
-          { caption: message, parse_mode: 'HTML' }
+          { caption: `📢 ${message}`, parse_mode: 'HTML' }
         );
       } else {
         await bot.telegram.sendMessage(
           group.chat_id,
-          message,
+          `📢 ${message}`,
           { parse_mode: 'HTML' }
         );
       }
@@ -106,6 +108,7 @@ export async function sendAnnouncementToGroups(bot: any, message: string, photoU
     }
   }
 
+  console.log(`✅ Announcement sent: ${sent} groups, failed: ${failed}`);
   return { sent, failed };
 }
 
@@ -134,4 +137,56 @@ export async function sendBroadcast(bot: any, message: string, adminId: string) 
   await db.logAction('broadcast_completed', undefined, adminId, { sent, failed, blocked });
   console.log(`📢 Broadcast complete: ${sent} sent, ${failed} failed, ${blocked} blocked`);
   return { sent, failed, blocked };
+}
+
+// ===== REPEATING MESSAGES =====
+
+let repeatInterval: NodeJS.Timeout | null = null;
+
+export function startRepeatingMessage(
+  bot: any,
+  message: string,
+  photoUrl: string | null,
+  intervalMinutes: number = 10
+) {
+  // Clear any existing interval
+  if (repeatInterval) {
+    clearInterval(repeatInterval);
+    repeatInterval = null;
+  }
+
+  // Send immediately once
+  sendAnnouncementToGroups(bot, message, photoUrl || undefined).then((result) => {
+    console.log(`🔁 Repeating message sent immediately: ${result.sent} groups`);
+  });
+
+  // Set up interval for repeating
+  repeatInterval = setInterval(async () => {
+    try {
+      const active = await db.getActiveRepeatingMessage();
+      if (!active || !active.is_active) {
+        if (repeatInterval) {
+          clearInterval(repeatInterval);
+          repeatInterval = null;
+        }
+        console.log('⏹️ Repeating message auto-stopped (inactive)');
+        return;
+      }
+
+      const result = await sendAnnouncementToGroups(bot, active.message, active.photo_url || undefined);
+      console.log(`🔁 Repeating message sent: ${result.sent} groups (every ${intervalMinutes} min)`);
+    } catch (error) {
+      console.error('❌ Error in repeating message:', error);
+    }
+  }, intervalMinutes * 60 * 1000);
+
+  console.log(`🔁 Auto-repeat started: every ${intervalMinutes} minutes`);
+}
+
+export function stopRepeatingMessage() {
+  if (repeatInterval) {
+    clearInterval(repeatInterval);
+    repeatInterval = null;
+    console.log('⏹️ Auto-repeat stopped');
+  }
 }

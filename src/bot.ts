@@ -1,4 +1,4 @@
-import { Telegraf, session, Context } from 'telegraf';
+import { Telegraf, session, Context, Markup } from 'telegraf';
 import * as db from './database';
 import * as services from './services';
 import { 
@@ -17,30 +17,53 @@ interface SessionData {
   announcementType?: 'text' | 'photo';
   announcementText?: string;
   announcementPhoto?: string;
+  autoRepeat?: boolean;
 }
 
 interface BotContext extends Context {
   session?: SessionData;
 }
 
+// Initialize bot
 const bot = new Telegraf<BotContext>(process.env.TELEGRAM_BOT_TOKEN!);
 
 // ===== MIDDLEWARE =====
 bot.use(session());
 
+// Global error handler
 bot.use(async (ctx, next) => {
-  try { await next(); } 
+  try { 
+    await next(); 
+  } 
   catch (error) {
-    console.error('Error:', error);
-    await ctx.reply('An error occurred. Please try again.');
+    console.error('❌ Error in middleware:', error);
+    await ctx.reply('An error occurred. Please try again.').catch(() => {});
   }
+});
+
+// Log all incoming updates
+bot.use(async (ctx, next) => {
+  console.log(`📨 Received update: ${ctx.updateType}`);
+  if (ctx.message && 'text' in ctx.message) {
+    console.log(`📝 Message: ${ctx.message.text || 'non-text'}`);
+  }
+  if (ctx.callbackQuery && 'data' in ctx.callbackQuery) {
+    console.log(`🔘 Callback: ${ctx.callbackQuery.data}`);
+  }
+  await next();
 });
 
 // ===== ADMIN CHECK =====
 async function requireAdmin(ctx: BotContext, next: () => Promise<void>) {
-  if (!ctx.from) return ctx.reply('Unable to identify you.');
+  if (!ctx.from) {
+    await ctx.reply('Unable to identify you.');
+    return;
+  }
   const isAdmin = await db.isAdmin(ctx.from.id);
-  if (!isAdmin) return ctx.reply('⛔ Admin access required.');
+  if (!isAdmin) {
+    await ctx.reply('⛔ Admin access required.');
+    return;
+  }
   await next();
 }
 
@@ -52,17 +75,15 @@ bot.on('my_chat_member', async (ctx) => {
   const chat = update.chat;
   const newStatus = update.new_chat_member.status;
 
-  // Check if it's a group or supergroup (not a private chat)
   if (chat.type === 'private') {
-    return; // Ignore private chats
+    return;
   }
 
   if (newStatus === 'member' || newStatus === 'administrator') {
-    // Bot was added to a group
     const groupId = chat.id.toString();
-    // @ts-ignore - title exists on group chats
+    // @ts-ignore
     const groupTitle = chat.title || 'Unknown Group';
-    // @ts-ignore - username exists on group chats
+    // @ts-ignore
     const groupUsername = chat.username || null;
     const adminId = ctx.from?.id.toString() || '';
 
@@ -70,7 +91,6 @@ bot.on('my_chat_member', async (ctx) => {
     if (!user) return;
 
     try {
-      // Check if group already exists
       const existingGroup = await db.getGroupByChatId(groupId);
       if (!existingGroup) {
         await db.addGroup(groupId, groupTitle, groupUsername, user.id);
@@ -83,11 +103,10 @@ bot.on('my_chat_member', async (ctx) => {
   }
 
   if (newStatus === 'kicked' || newStatus === 'left') {
-    // Bot was removed from a group
     const groupId = chat.id.toString();
     try {
       await db.removeGroup(groupId);
-      // @ts-ignore - title exists on group chats
+      // @ts-ignore
       logger.info(`❌ Bot removed from group: ${chat.title || 'Unknown'}`);
     } catch (error) {
       logger.error('Error removing group:', error);
@@ -97,23 +116,37 @@ bot.on('my_chat_member', async (ctx) => {
 
 // ===== COMMANDS =====
 bot.command('start', async (ctx) => {
-  const user = await services.registerUser(ctx);
-  await db.initializeOwner();
+  console.log('📝 /start command received from:', ctx.from?.id);
+  try {
+    const user = await services.registerUser(ctx);
+    await db.initializeOwner();
 
-  if (user.status === 'pending') {
-    await ctx.reply(
-      '👋 Welcome!\n\nYour account is pending approval.\nYou\'ll be notified when approved.',
-      pendingMenu()
-    );
-  } else if (user.status === 'approved') {
-    await ctx.reply('👋 Welcome back! You have full access.', mainMenu());
-  } else if (user.status === 'banned') {
-    await ctx.reply('🚫 Your access has been revoked.');
+    if (user.status === 'pending') {
+      await ctx.reply(
+        '👋 Welcome!\n\nYour account is pending approval.\nYou\'ll be notified when approved.',
+        pendingMenu()
+      );
+    } else if (user.status === 'approved') {
+      await ctx.reply('👋 Welcome back! You have full access.', mainMenu());
+    } else if (user.status === 'banned') {
+      await ctx.reply('🚫 Your access has been revoked.');
+    }
+    console.log('✅ /start response sent to:', ctx.from?.id);
+  } catch (error) {
+    console.error('❌ Error in /start:', error);
+    await ctx.reply('An error occurred. Please try again.');
   }
 });
 
 bot.command('admin', requireAdmin, async (ctx) => {
-  await ctx.reply('⚙️ Admin Panel\n\nSelect an option:', adminPanel());
+  console.log('📝 /admin command received from:', ctx.from?.id);
+  try {
+    await ctx.reply('⚙️ Admin Panel\n\nSelect an option:', adminPanel());
+    console.log('✅ /admin response sent to:', ctx.from?.id);
+  } catch (error) {
+    console.error('❌ Error in /admin:', error);
+    await ctx.reply('An error occurred. Please try again.');
+  }
 });
 
 bot.command('help', async (ctx) => {
@@ -123,15 +156,25 @@ bot.command('help', async (ctx) => {
     '/start - Register\n' +
     '/help - This message\n' +
     '/account - Your info\n' +
-    '/admin - Admin panel\n' +
-    '/groups - View all groups (admin only)\n\n' +
+    '/admin - Admin panel (admins only)\n' +
+    '/groups - View all groups (admin only)\n' +
+    '/ping - Check if bot is alive\n\n' +
     '🔊 Announcement Bot Features:\n' +
-    '• Send messages to ALL groups at once\n' +
+    '• Admins send messages to ALL groups at once\n' +
+    '• Auto-repeat messages every 10 minutes\n' +
     '• Attach photos to announcements\n' +
     '• Track users who use the bot\n' +
     '• Ban users if needed',
     mainMenu()
   );
+});
+
+bot.command('ping', async (ctx) => {
+  await ctx.reply('🏓 Pong! Bot is alive and responding!');
+});
+
+bot.command('test', async (ctx) => {
+  await ctx.reply(`✅ Bot is working! Your ID: ${ctx.from.id}`);
 });
 
 bot.command('account', async (ctx) => {
@@ -153,21 +196,6 @@ bot.command('groups', requireAdmin, async (ctx) => {
 });
 
 // ===== CALLBACKS =====
-bot.action('main_feature', async (ctx) => {
-  await ctx.answerCbQuery();
-  await ctx.reply(
-    '🔊 Announcement Bot\n\n' +
-    'This bot sends announcements to all groups at once!\n\n' +
-    'As an admin, you can:\n' +
-    '• Send text announcements\n' +
-    '• Send photo announcements\n' +
-    '• View all groups\n' +
-    '• Manage users\n' +
-    '• Ban users\n\n' +
-    'Use /admin to get started!'
-  );
-});
-
 bot.action('my_account', async (ctx) => {
   await ctx.answerCbQuery();
   const user = await db.findUser(ctx.from.id);
@@ -200,6 +228,8 @@ bot.action(/admin_.*/, requireAdmin, async (ctx) => {
     ? ctx.callbackQuery.data 
     : '';
 
+  console.log('📝 Admin action:', action);
+
   if (action === 'admin_announcement') {
     ctx.session = ctx.session || {};
     ctx.session.announcement = true;
@@ -208,6 +238,22 @@ bot.action(/admin_.*/, requireAdmin, async (ctx) => {
       'What type of announcement do you want to send?',
       announcementMenu()
     );
+  }
+
+  else if (action === 'admin_autorepeat') {
+    ctx.session = ctx.session || {};
+    ctx.session.autoRepeat = true;
+    await ctx.reply(
+      '🔁 Auto-Repeat Message\n\n' +
+      'Send the message you want the bot to repeat every 10 minutes.\n\n' +
+      '⚠️ The bot will send this to ALL groups every 10 minutes until you stop it.'
+    );
+  }
+
+  else if (action === 'admin_stoprepeat') {
+    services.stopRepeatingMessage();
+    await db.stopRepeatingMessage();
+    await ctx.reply('⏹️ Auto-repeat stopped successfully!\n\nThe bot will no longer repeat messages.');
   }
 
   else if (action === 'admin_groups') {
@@ -242,6 +288,7 @@ bot.action(/admin_.*/, requireAdmin, async (ctx) => {
   else if (action === 'admin_stats') {
     const stats = await db.getStats();
     const groups = await db.getGroups();
+    const activeRepeat = await db.getActiveRepeatingMessage();
     await ctx.reply(
       `📊 Statistics\n\n` +
       `👥 Users:\n` +
@@ -249,7 +296,8 @@ bot.action(/admin_.*/, requireAdmin, async (ctx) => {
       `   Pending: ${stats.pending}\n` +
       `   Approved: ${stats.approved}\n` +
       `   Banned: ${stats.banned}\n\n` +
-      `📢 Groups: ${groups.length}`,
+      `📢 Groups: ${groups.length}\n\n` +
+      `🔁 Auto-Repeat: ${activeRepeat && activeRepeat.is_active ? '✅ Active' : '❌ Inactive'}`,
       backButton()
     );
   }
@@ -391,6 +439,8 @@ bot.on('text', async (ctx) => {
   const text = ctx.message.text;
   const session = ctx.session || {};
 
+  console.log(`📝 Text received: ${text}`);
+
   // Handle ban reason
   if (session.banUserId) {
     if (text === '/skip') {
@@ -406,19 +456,35 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // Handle announcement text
+  // Handle admin announcement text
   if (session.announcement && session.announcementType === 'text') {
     session.announcementText = text;
     await ctx.reply(
       `📢 Announcement Preview\n\n${text}\n\n` +
-      `Send this to all groups?`,
+      `How do you want to send this?`,
       confirmBroadcast()
     );
     session.announcement = false;
     return;
   }
 
-  // Handle broadcast (for user broadcast)
+  // Handle auto-repeat message text
+  if (session.autoRepeat) {
+    session.announcementText = text;
+    await ctx.reply(
+      `🔁 Auto-Repeat Preview\n\n${text}\n\n` +
+      `⚠️ This will be sent to ALL groups every 10 minutes.\n\n` +
+      `Start auto-repeat?`,
+      Markup.inlineKeyboard([
+        [Markup.button.callback('🔁 Start Repeating', 'confirm_repeat')],
+        [Markup.button.callback('❌ Cancel', 'cancel_broadcast')]
+      ])
+    );
+    delete session.autoRepeat;
+    return;
+  }
+
+  // Handle broadcast
   if (session.broadcast) {
     if (text === '/cancel') {
       delete session.broadcast;
@@ -484,7 +550,7 @@ bot.on('photo', async (ctx) => {
 bot.action('confirm_broadcast', requireAdmin, async (ctx) => {
   const session = ctx.session || {};
   
-  // Check if it's an announcement (send to groups)
+  // Admin announcement - Send Once
   if (session.announcementText) {
     const text = session.announcementText;
     const photo = session.announcementPhoto;
@@ -514,7 +580,6 @@ bot.action('confirm_broadcast', requireAdmin, async (ctx) => {
       await ctx.reply('❌ Error sending announcement.');
     }
 
-    // Clear session
     delete session.announcement;
     delete session.announcementText;
     delete session.announcementPhoto;
@@ -524,7 +589,7 @@ bot.action('confirm_broadcast', requireAdmin, async (ctx) => {
     return;
   }
 
-  // Check if it's a broadcast (send to users)
+  // Broadcast
   const message = session.broadcastMessage;
   if (message) {
     await ctx.answerCbQuery('📤 Sending broadcast...');
@@ -549,6 +614,52 @@ bot.action('confirm_broadcast', requireAdmin, async (ctx) => {
   }
 });
 
+// ===== AUTO-REPEAT CONFIRMATION =====
+bot.action('confirm_repeat', requireAdmin, async (ctx) => {
+  const session = ctx.session || {};
+  const text = session.announcementText;
+  const photo = session.announcementPhoto;
+
+  if (!text) {
+    return ctx.reply('No message found. Please start over with /admin → Auto-Repeat');
+  }
+
+  await ctx.answerCbQuery('🔁 Starting auto-repeat...');
+
+  try {
+    const user = await db.findUser(ctx.from.id);
+    await db.createRepeatingMessage(text, photo || null, user?.id || '', 10);
+    services.startRepeatingMessage(bot, text, photo || null, 10);
+    
+    await ctx.reply(
+      `🔁 Auto-Repeat Started!\n\n` +
+      `📢 The bot will send this message to ALL groups every 10 minutes.\n\n` +
+      `To stop: use /admin → "⏹️ Stop Repeating"\n\n` +
+      `Message:\n${text}`
+    );
+    await db.logAction('auto_repeat_started', undefined, ctx.from.id.toString(), { 
+      text, hasPhoto: !!photo, interval: 10
+    });
+  } catch (error) {
+    console.error('❌ Error starting repeat:', error);
+    await ctx.reply('❌ Error starting auto-repeat.');
+  }
+
+  delete session.announcement;
+  delete session.announcementText;
+  delete session.announcementPhoto;
+  delete session.announcementType;
+});
+
+// ===== STOP REPEAT HANDLER =====
+bot.action('stop_repeat', requireAdmin, async (ctx) => {
+  await ctx.answerCbQuery('⏹️ Stopping...');
+  services.stopRepeatingMessage();
+  await db.stopRepeatingMessage();
+  await db.logAction('auto_repeat_stopped', undefined, ctx.from.id.toString(), {});
+  await ctx.reply('⏹️ Auto-repeat has been stopped.\n\nThe bot will no longer repeat messages.');
+});
+
 bot.action('cancel_broadcast', async (ctx) => {
   await ctx.answerCbQuery('Cancelled');
   await ctx.reply('❌ Cancelled.');
@@ -559,6 +670,7 @@ bot.action('cancel_broadcast', async (ctx) => {
     delete ctx.session.announcementType;
     delete ctx.session.broadcast;
     delete ctx.session.broadcastMessage;
+    delete ctx.session.autoRepeat;
   }
 });
 
@@ -595,11 +707,44 @@ async function showGroups(ctx: Context) {
 }
 
 // ===== START BOT =====
-// At the end of the file, update startBot function
 export function startBot() {
-  bot.launch();
-  console.log('✅ Bot started successfully!');
-  console.log(`🤖 Bot username: ${bot.botInfo?.username || 'unknown'}`);
-  console.log('📢 Announcement Bot is ready!');
+  console.log('🔧 Starting bot...');
+  console.log('📡 Connecting to Telegram...');
+  
+  bot.launch({
+    dropPendingUpdates: true
+  }).then(async () => {
+    console.log('✅ Bot started successfully!');
+    console.log(`🤖 Bot username: ${bot.botInfo?.username || 'unknown'}`);
+    console.log('📢 Announcement Bot is ready!');
+    console.log('📡 Polling for updates...');
+    console.log('👑 Admins can use /admin for announcements');
+    console.log('🔁 Auto-repeat available in admin panel');
+
+    // Auto-resume any active repeating message on startup
+    try {
+      const active = await db.getActiveRepeatingMessage();
+      if (active && active.is_active) {
+        services.startRepeatingMessage(
+          bot, 
+          active.message, 
+          active.photo_url, 
+          active.interval_minutes || 10
+        );
+        console.log(`🔁 Auto-resumed repeating message (every ${active.interval_minutes || 10} min)`);
+      }
+    } catch (error) {
+      console.error('Error resuming repeat:', error);
+    }
+  }).catch((error) => {
+    console.error('❌ Failed to start bot:', error);
+    console.error('❌ Error details:', error.message);
+    if (error.response) {
+      console.error('❌ Response:', error.response);
+    }
+  });
+  
   return bot;
 }
+
+export { bot };
