@@ -162,7 +162,7 @@ bot.command('help', async (ctx) => {
     '🔊 Announcement Bot Features:\n' +
     '• Admins send messages to ALL groups at once\n' +
     '• Auto-repeat messages every 10 minutes\n' +
-    '• Attach photos to announcements\n' +
+    '• Send photo + text together (like WhatsApp)\n' +
     '• Track users who use the bot\n' +
     '• Ban users if needed',
     mainMenu()
@@ -341,7 +341,15 @@ bot.action('announce_photo', async (ctx) => {
   ctx.session = ctx.session || {};
   ctx.session.announcementType = 'photo';
   ctx.session.announcement = true;
-  await ctx.reply('🖼️ Send me the photo, then the text:');
+  await ctx.reply(
+    '🖼️ Send Photo + Text Together\n\n' +
+    '📸 How to send:\n' +
+    '1. Tap 📎 (attachment icon)\n' +
+    '2. Select your photo\n' +
+    '3. Type your message in the caption box\n' +
+    '4. Tap Send\n\n' +
+    '✨ Both photo and text will go together to ALL groups — just like WhatsApp!'
+  );
 });
 
 // ===== USER MANAGEMENT =====
@@ -456,7 +464,7 @@ bot.on('text', async (ctx) => {
     return;
   }
 
-  // Handle admin announcement text
+  // Handle admin announcement text (text-only)
   if (session.announcement && session.announcementType === 'text') {
     session.announcementText = text;
     await ctx.reply(
@@ -465,6 +473,19 @@ bot.on('text', async (ctx) => {
       confirmBroadcast()
     );
     session.announcement = false;
+    return;
+  }
+
+  // Handle text when user selected "photo" but only sent text (fallback)
+  if (session.announcement && session.announcementType === 'photo' && !session.announcementPhoto) {
+    session.announcementText = text;
+    await ctx.reply(
+      `📢 Text-Only Announcement Preview\n\n${text}\n\n` +
+      `How do you want to send this?`,
+      confirmBroadcast()
+    );
+    delete session.announcement;
+    delete session.announcementType;
     return;
   }
 
@@ -534,14 +555,34 @@ bot.on('text', async (ctx) => {
   }
 });
 
-// ===== PHOTO HANDLER =====
+// ===== PHOTO HANDLER (Supports caption text like WhatsApp) =====
 bot.on('photo', async (ctx) => {
   const session = ctx.session || {};
+  
   if (session.announcement && session.announcementType === 'photo') {
     const photo = ctx.message.photo?.pop();
-    if (photo) {
+    const caption = ctx.message.caption; // Text sent WITH the photo
+    
+    if (!photo) return;
+
+    if (caption) {
+      // ✅ User sent photo + text TOGETHER (WhatsApp style)
       session.announcementPhoto = photo.file_id;
-      await ctx.reply('📝 Now send me the text for the announcement:');
+      session.announcementText = caption;
+      
+      await ctx.reply(
+        `📢 Announcement Preview\n\n${caption}\n\n(📷 Photo attached)\n\n` +
+        `How do you want to send this?`,
+        confirmBroadcast()
+      );
+      delete session.announcement;
+    } else {
+      // ⚠️ User sent photo only — ask for text
+      session.announcementPhoto = photo.file_id;
+      await ctx.reply(
+        '📝 Now send me the text for the announcement:\n\n' +
+        '💡 Tip: Next time, add the text as a caption to the photo — one message, just like WhatsApp!'
+      );
     }
   }
 });
