@@ -16,6 +16,12 @@ export const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// ===== HELPER: Check if string is a valid UUID =====
+function isValidUUID(str?: string | null): boolean {
+  if (!str) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+}
+
 // ===== USER OPERATIONS =====
 
 export async function findUser(telegramId: number): Promise<User | null> {
@@ -178,11 +184,33 @@ export async function getAllAdmins(): Promise<Admin[]> {
 }
 
 // ===== ACTIVITY LOG =====
+// FIXED: Now validates UUIDs before inserting
 
-export async function logAction(action: string, userId?: string, adminId?: string, metadata?: any) {
+export async function logAction(
+  action: string, 
+  userId?: string, 
+  adminId?: string, 
+  metadata?: any
+) {
+  // Only use user_id and admin_id if they're valid UUIDs
+  const validUserId = isValidUUID(userId) ? userId : null;
+  const validAdminId = isValidUUID(adminId) ? adminId : null;
+
+  // Store telegram IDs in metadata if they were passed instead of UUIDs
+  const enrichedMetadata = {
+    ...metadata,
+    ...(userId && !isValidUUID(userId) ? { telegram_user_id: userId } : {}),
+    ...(adminId && !isValidUUID(adminId) ? { telegram_admin_id: adminId } : {}),
+  };
+
   const { error } = await supabase
     .from('activity_logs')
-    .insert([{ action, user_id: userId, admin_id: adminId, metadata }]);
+    .insert([{ 
+      action, 
+      user_id: validUserId, 
+      admin_id: validAdminId, 
+      metadata: enrichedMetadata 
+    }]);
   
   if (error) console.error('Failed to log action:', error);
 }
