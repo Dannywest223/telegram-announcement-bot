@@ -14,6 +14,8 @@ export const adminPanel = () => Markup.inlineKeyboard([
   [Markup.button.callback('📢 Send Announcement', 'admin_announcement')],
   [Markup.button.callback('🔁 Auto-Repeat', 'admin_autorepeat')],
   [Markup.button.callback('⏹️ Stop Repeating', 'admin_stoprepeat')],
+  [Markup.button.url('➕ Add Bot to Group', `https://t.me/${process.env.BOT_USERNAME || 'jonathan5432_bot'}?startgroup=true`)],
+  [Markup.button.callback('🔗 Share Bot Link', 'admin_share_link')],
   [Markup.button.callback('👥 Groups', 'admin_groups')],
   [Markup.button.callback('👤 Users', 'admin_users')],
   [Markup.button.callback('⏳ Pending', 'admin_pending')],
@@ -45,14 +47,12 @@ export const backButton = () => Markup.inlineKeyboard([
   [Markup.button.callback('◀️ Back', 'admin_back')]
 ]);
 
-// Updated: Added "Send Every 10 Min" option
 export const confirmBroadcast = () => Markup.inlineKeyboard([
   [Markup.button.callback('✅ Send Once', 'confirm_broadcast')],
   [Markup.button.callback('🔁 Send Every 10 Min', 'confirm_repeat')],
   [Markup.button.callback('❌ Cancel', 'cancel_broadcast')]
 ]);
 
-// New: Stop repeat keyboard
 export const stopRepeatKeyboard = () => Markup.inlineKeyboard([
   [Markup.button.callback('⏹️ Stop Repeating', 'stop_repeat')],
   [Markup.button.callback('❌ Cancel', 'cancel')]
@@ -72,3 +72,12 @@ export const groupListKeyboard = (groups: any[]) => {
     [Markup.button.callback('◀️ Back', 'admin_back')],
   ]);
 };
+
+// Share link keyboard (shows shareable link)
+export const shareLinkKeyboard = (botUsername: string) => Markup.inlineKeyboard([
+  [Markup.button.url(
+    '📤 Open Share Link', 
+    `https://t.me/share/url?url=https://t.me/${botUsername}?startgroup=true&text=Add%20this%20bot%20to%20your%20group%20for%20announcements!`
+  )],
+  [Markup.button.callback('◀️ Back', 'admin_back')]
+]);

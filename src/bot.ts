@@ -3,7 +3,8 @@ import * as db from './database';
 import * as services from './services';
 import { 
   mainMenu, pendingMenu, adminPanel, userActions, backButton, 
-  confirmBroadcast, announcementMenu, groupListKeyboard
+  confirmBroadcast, announcementMenu, groupListKeyboard,
+  shareLinkKeyboard
 } from './keyboards';
 import { supabase } from './database';
 import { logger } from './utils';
@@ -254,6 +255,29 @@ bot.action(/admin_.*/, requireAdmin, async (ctx) => {
     services.stopRepeatingMessage();
     await db.stopRepeatingMessage();
     await ctx.reply('⏹️ Auto-repeat stopped successfully!\n\nThe bot will no longer repeat messages.');
+  }
+
+  // NEW: Share link handler
+  else if (action === 'admin_share_link') {
+    const botUsername = process.env.BOT_USERNAME || 'jonathan5432_bot';
+    const shareLink = `https://t.me/${botUsername}?startgroup=true`;
+    
+    await ctx.reply(
+      `🔗 Share Bot Link\n\n` +
+      `Copy this link and share it with anyone:\n\n` +
+      `${shareLink}\n\n` +
+      `✨ When someone clicks it:\n` +
+      `• Telegram opens a group picker\n` +
+      `• They select a group they admin\n` +
+      `• Bot gets added automatically\n` +
+      `• Announcements now reach that group!\n\n` +
+      `📱 Share this link with:\n` +
+      `• Group admins\n` +
+      `• WhatsApp chats\n` +
+      `• Other Telegram groups\n` +
+      `• Social media`,
+      shareLinkKeyboard(botUsername)
+    );
   }
 
   else if (action === 'admin_groups') {
